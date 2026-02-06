@@ -8,7 +8,7 @@ import { z } from "zod";
 export const LibraryRequirementSchema = z.object({
   package: z.string(),
   import: z.string(),
-  config: z.record(z.unknown()).default({}),
+  config: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type LibraryRequirement = z.infer<typeof LibraryRequirementSchema>;

@@ -73,8 +73,10 @@ describe("ConfigSchema", () => {
     try {
       ConfigSchema.parse({});
     } catch (error: unknown) {
-      const zodError = error as { errors: Array<{ path: string[] }> };
-      const paths = zodError.errors.map((e) => e.path.join("."));
+      // Zod 4 uses `issues` array instead of `errors`
+      const zodError = error as { issues?: Array<{ path: (string | number)[] }>; errors?: Array<{ path: string[] }> };
+      const issueList = zodError.issues ?? zodError.errors ?? [];
+      const paths = issueList.map((e) => e.path.join("."));
       expect(paths).toContain("schemaPath");
       expect(paths).toContain("sdkInitFile");
     }
