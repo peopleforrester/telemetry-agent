@@ -1,0 +1,12 @@
+{
+  "name": "e2e-test-project",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "echo 'tests passed'"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-node": "^0.200.0"
+  }
+}

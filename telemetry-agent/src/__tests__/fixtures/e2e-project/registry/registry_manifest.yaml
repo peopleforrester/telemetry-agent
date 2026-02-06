@@ -1,0 +1,15 @@
+schema_url: https://example.com/e2e-schema
+groups:
+  - id: registry.test
+    type: attribute_group
+    brief: Test attributes for E2E project
+    attributes:
+      - id: test.name
+        type: string
+        requirement_level: required
+  - id: test.operation
+    type: span
+    brief: A test operation span
+    attributes:
+      - ref: test.name
+        requirement_level: required

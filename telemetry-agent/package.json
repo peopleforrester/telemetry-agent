@@ -1,0 +1,36 @@
+{
+  "name": "telemetry-agent",
+  "version": "0.1.0",
+  "description": "AI agent that auto-instruments TypeScript code with OpenTelemetry based on a Weaver schema",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": "^18.19.0 || >=20.6.0"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.73.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-async-hooks": "^2.5.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.211.0",
+    "@opentelemetry/sdk-node": "^0.211.0",
+    "@opentelemetry/sdk-trace-base": "^2.5.0",
+    "prettier": "^3.8.1",
+    "simple-git": "^3.30.0",
+    "ts-morph": "^27.0.2",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

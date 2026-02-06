@@ -1,0 +1,10 @@
+schema_url: https://opentelemetry.io/schemas/1.37.0
+groups:
+  - id: test.attr
+    type: attribute_group
+    brief: Test attributes
+    attributes:
+      - id: test.name
+        type: string
+        brief: Test name
+        requirement_level: required

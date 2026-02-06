@@ -1,0 +1,11 @@
+{
+  "name": "valid-test-project",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-node": "^0.57.0"
+  }
+}

@@ -1,0 +1,17 @@
+schema_url: https://opentelemetry.io/schemas/1.37.0
+groups:
+  - id: registry.test
+    type: attribute_group
+    brief: Test attributes for unit testing
+    attributes:
+      - id: test.name
+        type: string
+        brief: Name of the test
+        requirement_level: required
+  - id: test.operation
+    type: span
+    brief: A test operation span
+    span_kind: internal
+    attributes:
+      - ref: test.name
+        requirement_level: required
