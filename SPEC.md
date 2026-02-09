@@ -1,7 +1,8 @@
 # Telemetry Agent Specification
 
-**Status:** Draft
+**Status:** Draft v2.1
 **Created:** 2026-02-05
+**Updated:** 2026-02-06
 **Purpose:** AI agent that auto-instruments TypeScript code with OpenTelemetry based on a Weaver schema
 
 ## Vision
@@ -132,7 +133,8 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 │     a. Snapshot file (record HEAD SHA or temp copy)             │
 │     b. Spawn Instrumentation Agent                              │
 │     c. On agent failure → revert file to snapshot               │
-│  4. Collect result files from .telemetry-agent-results/         │
+│  4. Collect in-memory results                                   │
+│  4b. Periodic schema checkpoint every N files (weaverCheck)     │
 │  5. Aggregate libraries_needed → bulk npm install               │
 │  6. Render SDK init file from accumulated library declarations  │
 │  7. Run end-of-run validation (tests + Weaver live-check)       │
@@ -191,7 +193,7 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 - **New AI instance per file:** prevents laziness, ensures quality
 - **Schema changes propagate:** via git commits on feature branch
 - **Single PR at end:** contains all instrumented files and schema updates
-- **PoC file limit:** Maximum 10 files per run. If a directory glob returns more than 10 files, the Coordinator fails with an error suggesting the user target a subdirectory or specific files. This avoids known scaling issues (see "Known Scaling Limitations"). Post-PoC, the Coordinator-level SDK modification pattern and schema assembly described in this spec would remove the need for this cap.
+- **File limit:** Configurable via `maxFilesPerRun` (default 50). If a directory glob returns more files, the Coordinator fails with an error suggesting the user target a subdirectory or specific files.
 
 ---
 
@@ -207,9 +209,20 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 
 LLMs tend to over-instrument when told to "add telemetry." Without constraints, the agent may wrap every function in a span, causing real performance overhead in high-throughput Node.js apps.
 
-- **Per-file cap:** Maximum 5 manual spans per file. If the agent identifies more instrumentation points, it should prioritize entry points and external calls.
-- **Project-wide cap:** The Coordinator sums `spans_added` across all result files. Unreasonable totals (configurable threshold) get flagged for human review rather than silently accepted.
+- **Per-file cap:** Maximum `maxSpansPerFile` (default 5) manual spans per file. If the agent identifies more instrumentation points, it should prioritize using the 4-tier heuristic (see below).
+- **Project-wide cap:** Configurable via `maxSpansPerRun` (default 50). The Coordinator sums `spans_added` across all result files. When totals exceed `maxSpansPerRun`, a span density warning is included in the PR description for human review.
 - **Explicit prohibition:** Do not instrument pure synchronous utilities, formatters, or helper functions that make no external calls.
+
+### Span Prioritization Heuristic (4-Tier)
+
+When more candidate functions exist than the per-file cap allows, prioritize by tier:
+
+- **Tier 1 (External calls):** Function body contains external call patterns (`pool.query`, `fetch(`, `axios.`, `prisma.`, `client.send`, `grpc`)
+- **Tier 2 (Entry points):** Exported async functions
+- **Tier 3 (Complex branching):** Functions with `if/else` + `try/catch` or `switch` statements
+- **Tier 4 (Everything else):** Remaining instrumentable functions
+
+Functions below the per-file cap are skipped with reason `"deprioritized"` in the result file.
 
 ### Schema guidance
 - Schema defines attribute groups and naming patterns
@@ -643,26 +656,13 @@ The Weaver schema for the agent itself (as opposed to target codebases) is a sep
 
 ## Result Files
 
-Each Instrumentation Agent writes its own result file. The Coordinator collects them to generate the PR summary.
+Each Instrumentation Agent returns its result in-memory. The Coordinator accumulates them to generate the PR summary.
 
-### Why Per-File Results (Not Shared File)
-- Sequential processing means no race condition now
-- But per-file results scale to parallel processing later
-- No append coordination needed
-- Coordinator just globs: `.telemetry-agent-results/*.json`
+### In-Memory Results (v2.1)
 
-### Lifecycle
+Results are kept in-memory during processing — no filesystem I/O for result files. The Coordinator maintains a `results: FileResult[]` array and appends each agent's result directly. This simplifies the architecture by removing the `.telemetry-agent-results/` directory, file serialization, and collection steps.
 
-Result files live on the **local filesystem** during processing — they are NOT committed to the feature branch per-file.
-
-1. Each Instrumentation Agent writes its result to `.telemetry-agent-results/` on disk
-2. The agent's git commit contains only code changes and schema updates, not the result file
-3. After all files are processed, the Coordinator reads result files from the filesystem
-4. Coordinator assembles the summary and **commits a single result manifest** in the final PR commit. This makes the agent's work auditable directly in the repo without depending on GitHub's PR description rendering. The PR description should include a human-readable summary table derived from the manifest.
-
-Result files only enter git once (if at all), at PR creation time — not per-file. This avoids noisy intermediate commits and keeps the feature branch history clean (each commit is one file's instrumentation changes).
-
-The Coordinator manages `.telemetry-agent-results/` — creating the directory, collecting results, and cleaning up.
+The Coordinator assembles the summary and **commits a single result manifest** in the final PR commit. The PR description includes a human-readable summary table derived from the manifest.
 
 ### Result Structure
 
@@ -684,19 +684,30 @@ The Coordinator manages `.telemetry-agent-results/` — creating the directory, 
 }
 ```
 
-For failures:
+For failures (unified schema — includes all fields with defaults for consistent aggregation):
 ```json
 {
   "path": "src/services/crypto.ts",
   "status": "failed",
   "reason": "syntax errors after 3 fix attempts",
-  "last_error": "Unexpected token at line 42"
+  "last_error": "Unexpected token at line 42",
+  "spans_added": 0,
+  "libraries_needed": [],
+  "schema_extensions": [],
+  "attributes_created": 0,
+  "validation_retries": 0
 }
 ```
 
 ### Include in PR
 
-Don't delete result files — commit the consolidated manifest in the PR. This builds trust with reviewers who want to see what the agent did across all files.
+Commit the consolidated manifest in the PR. This builds trust with reviewers who want to see what the agent did across all files.
+
+### PR Description Enhancements (v2.1)
+
+The PR description includes:
+- **Token Usage Summary:** Input tokens, output tokens, estimated cost
+- **Span Density Warning:** Banner displayed when total spans exceed `maxSpansPerRun`, alerting reviewers to high span density
 
 ### Future: Schema State Tracking
 
@@ -727,6 +738,9 @@ testCommand: "npm test"       # command to run test suite
 maxFixAttempts: 3              # bail out after N failed validation cycles per file
 maxTokensPerFile: 50000        # hard token budget per file (prevents runaway fix loops)
 maxSpansPerFile: 5             # manual span cap per file (library spans are uncapped)
+maxFilesPerRun: 50             # maximum files per run (replaces hardcoded 10)
+maxSpansPerRun: 50             # project-wide span cap (flags for human review)
+schemaCheckpointInterval: 5    # periodic Weaver check every N files
 exclude:                       # files to skip
   - "**/*.test.ts"
   - "**/*.spec.ts"

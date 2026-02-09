@@ -77,4 +77,19 @@ describe("self-instrumentation", () => {
     // May return the root context — either null or a valid trace ID
     expect(ctx === null || typeof ctx.traceId === "string").toBe(true);
   });
+
+  it("withCoordinatorSpan records token and cost attributes", async () => {
+    exporter.reset();
+    await withCoordinatorSpan(async () => "done", {
+      "gen_ai.usage.input_tokens": 15000,
+      "gen_ai.usage.output_tokens": 3000,
+      "telemetry_agent.estimated_cost": 0.12,
+    });
+    const spans = exporter.getFinishedSpans();
+    const coordinatorSpan = spans.find((s) => s.name === "telemetry_agent.run");
+    expect(coordinatorSpan).toBeDefined();
+    expect(coordinatorSpan!.attributes["gen_ai.usage.input_tokens"]).toBe(15000);
+    expect(coordinatorSpan!.attributes["gen_ai.usage.output_tokens"]).toBe(3000);
+    expect(coordinatorSpan!.attributes["telemetry_agent.estimated_cost"]).toBe(0.12);
+  });
 });

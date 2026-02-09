@@ -1,6 +1,6 @@
 # Telemetry Agent — Implementation TODO
 
-Tracks implementation progress against the 19-prompt TDD plan (`plan.md`).
+Tracks implementation progress against the 19-prompt TDD plan (`plan.md`) and v2.1 upgrade.
 Framework decision: **Direct Anthropic SDK** (`@anthropic-ai/sdk`).
 
 ---
@@ -138,9 +138,65 @@ Framework decision: **Direct Anthropic SDK** (`@anthropic-ai/sdk`).
 
 ---
 
+## v2.1 Upgrade (2026-02-06)
+
+Baseline: 162 tests passing, 22 test files.
+
+- [x] **Phase 0: Update SPEC.md + TODO.md**
+  - [x] SPEC.md updated with v2.1 changes
+  - [x] TODO.md updated with upgrade tracking
+
+- [x] **Phase 1: Config Schema — 3 New Fields** (+3 tests)
+  - [x] Add `maxFilesPerRun`, `maxSpansPerRun`, `schemaCheckpointInterval` to ConfigSchema
+  - [x] TDD tests for defaults and range validation
+  - [x] Cascade fix: update DEFAULT_CONFIG in 8 test files + init.ts
+  - Result: 165 tests passing
+
+- [x] **Phase 2: FailureResult Schema Unification** (+2 tests)
+  - [x] Add all fields with defaults to FailureResultSchema
+  - [x] TDD tests for failure with defaults and explicit zeros
+  - [x] Fixed agent.ts failure result literals for unified schema
+  - Result: 167 tests passing
+
+- [x] **Phase 3: In-Memory Results (Remove Filesystem I/O)** (-3 tests)
+  - [x] Remove writeResult, readResult, collectResults, resultFilename from results.ts
+  - [x] Remove fs/path imports from results.ts
+  - [x] Remove resultDir from coordinator's FileProcessingContext
+  - [x] Remove .telemetry-agent-results/ directory creation
+  - [x] Remove writeResult call and import from coordinator.ts
+  - [x] Remove filesystem I/O tests from results.test.ts
+  - Result: 164 tests passing
+
+- [x] **Phase 4: Coordinator Enhancements** (+3 tests)
+  - [x] Use config.maxFilesPerRun instead of hardcoded 10
+  - [x] Add spanDensityWarning to CoordinatorResult
+  - [x] Compute totalSpans and set warning flag
+  - Result: 167 tests passing
+
+- [x] **Phase 5: Span Prioritization Heuristic** (+4 tests)
+  - [x] Add classifyPriority() 4-tier function to pipeline.ts
+  - [x] Sort candidates by priority tier before applying cap
+  - [x] Deprioritized functions go to skippedFunctions with reason
+  - Result: 171 tests passing
+
+- [x] **Phase 6: PR Description — Token/Cost + Span Warning** (+3 tests)
+  - [x] Add TokenUsageSummary, SpanDensityInfo interfaces
+  - [x] Update buildPrDescription with optional params
+  - [x] Token usage section and span density warning banner
+  - Result: 174 tests passing
+
+- [x] **Phase 7: Agent Prompt + Telemetry Attributes** (+3 tests)
+  - [x] Update buildSystemPrompt with prioritization guidance
+  - [x] Add maxSpansPerRun density mention
+  - [x] Token/cost attributes test for telemetry
+  - Result: 177 tests passing
+
+---
+
 ## Verification (Post-Implementation)
 
-- [x] `npm test` — all 162 unit tests pass (22 test files)
+- [x] `npm test` — all 162 unit tests pass (22 test files) — v1 baseline
+- [x] `npm test` — all 177 unit tests pass (22 test files) — v2.1 complete
 - [x] `tsc --noEmit` — TypeScript compiles cleanly
 - [ ] E2E test passes with ANTHROPIC_API_KEY set (integration tests)
 - [ ] Manual test against commit-story-v2 as target codebase
@@ -153,7 +209,7 @@ Framework decision: **Direct Anthropic SDK** (`@anthropic-ai/sdk`).
 These are documented in the spec but explicitly out of scope for the PoC:
 
 - [ ] Schema Builder Agent (auto-generate schema from codebase discovery)
-- [ ] Parallel file processing (architecture supports it via result files)
+- [ ] Parallel file processing (architecture supports it via in-memory results)
 - [ ] Smart test discovery (only run tests touching changed files)
 - [ ] Test command flexibility (vitest, jest, nx, turbo)
 - [ ] Bump semconv to v1.39.0 — migrate `db.name` -> `db.namespace`

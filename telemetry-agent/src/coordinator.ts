@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { glob } from "./glob-util.js";
 import { createFeatureBranch, snapshotFile, revertFile, commitFiles } from "./git.js";
-import { writeResult, aggregateLibraries, type FileResult } from "./results.js";
+import { aggregateLibraries, type FileResult } from "./results.js";
 import { renderSdkInitFile } from "./sdk-renderer.js";
 import type { FileSnapshot } from "./git.js";
 import type { Config } from "./config.js";
@@ -20,7 +20,6 @@ export interface CoordinatorOptions {
 export interface FileProcessingContext {
   filePath: string;
   snapshot: FileSnapshot;
-  resultDir: string;
 }
 
 export type AgentFn = (
@@ -34,6 +33,7 @@ export interface CoordinatorResult {
   globalFailure: string | null;
   postProcess: PostProcessResult | null;
   endOfRun: EndOfRunResult | null;
+  spanDensityWarning: boolean;
 }
 
 export interface PostProcessResult {
@@ -96,11 +96,7 @@ export async function processFiles(
 
   // Resolve and filter files
   const allFiles = await resolveFiles(targetPath, config.exclude);
-  const files = enforceFileLimit(allFiles, 10);
-
-  // Create results directory
-  const resultDir = path.join(repoPath, ".telemetry-agent-results");
-  fs.mkdirSync(resultDir, { recursive: true });
+  const files = enforceFileLimit(allFiles, config.maxFilesPerRun);
 
   // Process each file
   for (const filePath of files) {
@@ -112,7 +108,6 @@ export async function processFiles(
     const ctx: FileProcessingContext = {
       filePath: relPath,
       snapshot,
-      resultDir,
     };
 
     const result = await agentFn(ctx, config);
@@ -122,10 +117,14 @@ export async function processFiles(
       await revertFile(repoPath, snapshot);
     }
 
-    // Write result file
-    writeResult(resultDir, result);
     results.push(result);
   }
+
+  // Compute span density warning
+  const totalSpans = results.reduce((sum, r) => {
+    return sum + (r.status === "success" ? r.spans_added : 0);
+  }, 0);
+  const spanDensityWarning = totalSpans > config.maxSpansPerRun;
 
   return {
     branchName,
@@ -133,6 +132,7 @@ export async function processFiles(
     globalFailure: null,
     postProcess: null,
     endOfRun: null,
+    spanDensityWarning,
   };
 }
 

@@ -25,6 +25,9 @@ const DEFAULT_CONFIG: Config = {
   maxFixAttempts: 3,
   maxTokensPerFile: 50000,
   maxSpansPerFile: 5,
+  maxFilesPerRun: 50,
+  maxSpansPerRun: 50,
+  schemaCheckpointInterval: 5,
   exclude: ["**/*.test.ts", "**/*.spec.ts", "**/*.d.ts", "node_modules/**"],
 };
 
@@ -92,6 +95,12 @@ describe("enforceFileLimit", () => {
   it("throws with > 10 files", () => {
     const files = Array.from({ length: 11 }, (_, i) => `file${i}.ts`);
     expect(() => enforceFileLimit(files, 10)).toThrow(/11.*10/);
+  });
+
+  it("uses config.maxFilesPerRun for limit", () => {
+    // With maxFilesPerRun=2, adding 3 files should throw
+    const files = Array.from({ length: 3 }, (_, i) => `file${i}.ts`);
+    expect(() => enforceFileLimit(files, 2)).toThrow(/3.*2/);
   });
 });
 
@@ -189,6 +198,47 @@ describe("processFiles", () => {
 
     expect(result.results).toHaveLength(1);
     expect(result.results[0].status).toBe("success");
+  });
+
+  it("uses config.maxFilesPerRun instead of hardcoded limit", async () => {
+    addTsFiles(tempDir, ["a.ts", "b.ts", "c.ts"]);
+    const config = { ...DEFAULT_CONFIG, maxFilesPerRun: 2 };
+    const mockAgent: AgentFn = async (ctx) => ({
+      path: ctx.filePath,
+      status: "success",
+      spans_added: 0,
+      libraries_needed: [],
+      schema_extensions: [],
+      attributes_created: 0,
+      validation_retries: 0,
+    });
+
+    await expect(processFiles(
+      { config, targetPath: path.join(tempDir, "src"), repoPath: tempDir },
+      mockAgent
+    )).rejects.toThrow(/3.*2/);
+  });
+
+  it("sets spanDensityWarning when total spans exceed maxSpansPerRun", async () => {
+    addTsFiles(tempDir, ["a.ts", "b.ts"]);
+    const config = { ...DEFAULT_CONFIG, maxSpansPerRun: 5 };
+    const mockAgent: AgentFn = async (ctx) => ({
+      path: ctx.filePath,
+      status: "success",
+      spans_added: 3,
+      libraries_needed: [],
+      schema_extensions: [],
+      attributes_created: 0,
+      validation_retries: 0,
+    });
+
+    const result = await processFiles(
+      { config, targetPath: path.join(tempDir, "src"), repoPath: tempDir },
+      mockAgent
+    );
+
+    // 2 files × 3 spans = 6 > maxSpansPerRun(5)
+    expect(result.spanDensityWarning).toBe(true);
   });
 
   it("snapshot preserves original file content", async () => {

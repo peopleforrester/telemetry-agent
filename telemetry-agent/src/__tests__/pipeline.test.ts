@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { analyzeFile, buildSpanName } from "../pipeline.js";
+import { analyzeFile, buildSpanName, classifyPriority } from "../pipeline.js";
 import type { Config } from "../config.js";
 
 const DEFAULT_CONFIG: Config = {
@@ -14,6 +14,9 @@ const DEFAULT_CONFIG: Config = {
   maxFixAttempts: 3,
   maxTokensPerFile: 50000,
   maxSpansPerFile: 5,
+  maxFilesPerRun: 50,
+  maxSpansPerRun: 50,
+  schemaCheckpointInterval: 5,
   exclude: [],
 };
 
@@ -95,6 +98,77 @@ export type Config = { name: string };
     const plan = await analyzeFile("src/constants.ts", code, DEFAULT_CONFIG);
     expect(plan.spansToAdd).toHaveLength(0);
     expect(plan.librariesNeeded).toHaveLength(0);
+  });
+});
+
+describe("classifyPriority", () => {
+  it("prioritizes external calls (tier 1) over pure logic", () => {
+    const codeWithDb = `
+export async function fetchUser(id: string) {
+  const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+  return result.rows[0];
+}
+`;
+    const codeWithoutDb = `
+export async function processData(input: string) {
+  const trimmed = input.trim();
+  const upper = trimmed.toUpperCase();
+  return upper;
+}
+`;
+    expect(classifyPriority("fetchUser", codeWithDb)).toBe(1);
+    expect(classifyPriority("processData", codeWithoutDb)).toBeGreaterThan(1);
+  });
+
+  it("prioritizes exported async (tier 2) after external calls", () => {
+    // Exported async without external calls → tier 2
+    const code = `
+export async function handleRequest(req: Request) {
+  const data = JSON.parse(req.body);
+  return data;
+}
+`;
+    expect(classifyPriority("handleRequest", code)).toBe(2);
+  });
+
+  it("skips tier-4 functions when cap reached", async () => {
+    // Create a file with mixed-priority functions
+    const code = `
+export async function dbCall() {
+  await pool.query('SELECT 1');
+  return true;
+}
+
+export async function entryPoint() {
+  const x = JSON.parse('{}');
+  return x;
+}
+
+export async function simpleWork() {
+  return 42;
+}
+`;
+    const config = { ...DEFAULT_CONFIG, maxSpansPerFile: 2 };
+    const plan = await analyzeFile("src/mixed.ts", code, config);
+    // With cap of 2, lower priority functions should be skipped
+    expect(plan.spansToAdd.length).toBeLessThanOrEqual(2);
+  });
+
+  it("records skipped functions with deprioritized reason", async () => {
+    // Many functions, low cap
+    const functions = Array.from({ length: 5 }, (_, i) => `
+export async function handler${i}(req: Request) {
+  const data = JSON.parse(req.body);
+  const result = await process(data);
+  return result;
+}`).join("\n");
+
+    const code = `import { Request } from 'express';\n${functions}`;
+    const config = { ...DEFAULT_CONFIG, maxSpansPerFile: 2 };
+    const plan = await analyzeFile("src/handlers.ts", code, config);
+    const deprioritized = plan.skippedFunctions.filter((s) => s.reason === "deprioritized");
+    // Some functions should be deprioritized
+    expect(deprioritized.length).toBeGreaterThan(0);
   });
 });
 

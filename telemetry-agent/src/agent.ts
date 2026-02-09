@@ -96,13 +96,19 @@ ${schema}
 2. **Manual spans as fallback**: For business logic without framework libraries,
    wrap functions with tracer.startActiveSpan().
 3. **Span density limit**: Add at most ${config.maxSpansPerFile} spans per file.
-4. **Naming conventions**: Span names follow the schema namespace. Use snake_case.
+   The project-wide cap is ${config.maxSpansPerRun} spans total — be selective.
+4. **Span prioritization** (when candidates exceed the per-file cap):
+   - **Tier 1**: Functions with external calls (pool.query, fetch, axios, prisma, grpc)
+   - **Tier 2**: Exported async functions (entry points)
+   - **Tier 3**: Complex branching (if/else + try/catch, switch)
+   - **Tier 4**: Everything else
+5. **Naming conventions**: Span names follow the schema namespace. Use snake_case.
    Format: {namespace}.{function_name_in_snake_case}
-5. **Variable shadowing**: Before inserting "span" or "tracer" variables, check
+6. **Variable shadowing**: Before inserting "span" or "tracer" variables, check
    the analysis plan for shadowing conflicts. Use "otelSpan" if "span" is taken.
-6. **Error handling**: All spans must have try/catch/finally with span.recordException()
+7. **Error handling**: All spans must have try/catch/finally with span.recordException()
    and span.end() in finally.
-7. **Preserve behavior**: Never change the functional behavior of the code.
+8. **Preserve behavior**: Never change the functional behavior of the code.
    Only add observability instrumentation.
 
 ## Workflow
@@ -213,6 +219,11 @@ export async function runAgent(
         path: filePath,
         status: "failed",
         reason: `Token budget exceeded: ${totalInputTokens + totalOutputTokens} > ${config.maxTokensPerFile}`,
+        spans_added: 0,
+        libraries_needed: [],
+        schema_extensions: [],
+        attributes_created: 0,
+        validation_retries: 0,
       };
     }
 
@@ -286,6 +297,11 @@ export async function runAgent(
     path: filePath,
     status: "failed",
     reason: "Max turns exceeded",
+    spans_added: 0,
+    libraries_needed: [],
+    schema_extensions: [],
+    attributes_created: 0,
+    validation_retries: 0,
   };
 }
 
@@ -331,5 +347,10 @@ function parseAgentResult(
     path: filePath,
     status: "failed",
     reason: "Agent did not produce a parseable result",
+    spans_added: 0,
+    libraries_needed: [],
+    schema_extensions: [],
+    attributes_created: 0,
+    validation_retries: 0,
   };
 }

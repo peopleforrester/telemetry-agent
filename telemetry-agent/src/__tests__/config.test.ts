@@ -59,12 +59,63 @@ describe("ConfigSchema", () => {
     expect(result.maxFixAttempts).toBe(3);
     expect(result.maxTokensPerFile).toBe(50000);
     expect(result.maxSpansPerFile).toBe(5);
+    expect(result.maxFilesPerRun).toBe(50);
+    expect(result.maxSpansPerRun).toBe(50);
+    expect(result.schemaCheckpointInterval).toBe(5);
     expect(result.exclude).toEqual([
       "**/*.test.ts",
       "**/*.spec.ts",
       "**/*.d.ts",
       "node_modules/**",
     ]);
+  });
+
+  it("applies defaults for v2.1 fields (maxFilesPerRun, maxSpansPerRun, schemaCheckpointInterval)", () => {
+    const input = {
+      schemaPath: "./registry",
+      sdkInitFile: "src/telemetry/setup.ts",
+    };
+
+    const result = ConfigSchema.parse(input);
+
+    expect(result.maxFilesPerRun).toBe(50);
+    expect(result.maxSpansPerRun).toBe(50);
+    expect(result.schemaCheckpointInterval).toBe(5);
+  });
+
+  it("accepts custom values for v2.1 fields", () => {
+    const input = {
+      schemaPath: "./registry",
+      sdkInitFile: "src/telemetry/setup.ts",
+      maxFilesPerRun: 20,
+      maxSpansPerRun: 100,
+      schemaCheckpointInterval: 10,
+    };
+
+    const result = ConfigSchema.parse(input);
+
+    expect(result.maxFilesPerRun).toBe(20);
+    expect(result.maxSpansPerRun).toBe(100);
+    expect(result.schemaCheckpointInterval).toBe(10);
+  });
+
+  it("rejects zero or negative values for v2.1 fields", () => {
+    const base = {
+      schemaPath: "./registry",
+      sdkInitFile: "src/telemetry/setup.ts",
+    };
+
+    expect(() =>
+      ConfigSchema.parse({ ...base, maxFilesPerRun: 0 })
+    ).toThrow();
+
+    expect(() =>
+      ConfigSchema.parse({ ...base, maxSpansPerRun: 0 })
+    ).toThrow();
+
+    expect(() =>
+      ConfigSchema.parse({ ...base, schemaCheckpointInterval: 0 })
+    ).toThrow();
   });
 
   it("rejects missing required fields with helpful message", () => {
@@ -153,6 +204,9 @@ maxFixAttempts: 5
       maxFixAttempts: 7,
       maxTokensPerFile: 40000,
       maxSpansPerFile: 10,
+      maxFilesPerRun: 25,
+      maxSpansPerRun: 75,
+      schemaCheckpointInterval: 3,
       exclude: ["build/**", "*.generated.ts"],
     };
     const configPath = path.join(tempDir, "telemetry-agent.yaml");

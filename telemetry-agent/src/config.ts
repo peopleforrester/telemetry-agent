@@ -13,6 +13,9 @@ export const ConfigSchema = z.object({
   maxFixAttempts: z.number().int().min(1).max(10).default(3),
   maxTokensPerFile: z.number().int().min(1000).default(50000),
   maxSpansPerFile: z.number().int().min(1).max(20).default(5),
+  maxFilesPerRun: z.number().int().min(1).default(50),
+  maxSpansPerRun: z.number().int().min(1).default(50),
+  schemaCheckpointInterval: z.number().int().min(1).default(5),
   exclude: z
     .array(z.string())
     .default(["**/*.test.ts", "**/*.spec.ts", "**/*.d.ts", "node_modules/**"]),

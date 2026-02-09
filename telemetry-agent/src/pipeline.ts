@@ -18,7 +18,7 @@ export interface SpanPlan {
 
 export interface SkippedFunction {
   name: string;
-  reason: "already_instrumented" | "too_short" | "shadowing_ambiguous";
+  reason: "already_instrumented" | "too_short" | "shadowing_ambiguous" | "deprioritized";
 }
 
 export interface AnalysisPlan {
@@ -76,8 +76,21 @@ export async function analyzeFile(
     (fn) => !alreadyInstrumented.includes(fn.name)
   );
 
+  // Sort candidates by priority tier (lower tier = higher priority)
+  const lines = fileContent.split("\n");
+  candidates.sort((a, b) => {
+    const bodyA = lines.slice(a.startLine - 1, a.endLine).join("\n");
+    const bodyB = lines.slice(b.startLine - 1, b.endLine).join("\n");
+    return classifyPriority(a.name, bodyA, a.isExported && a.isAsync) -
+           classifyPriority(b.name, bodyB, b.isExported && b.isAsync);
+  });
+
   for (const fn of candidates) {
-    if (spansToAdd.length >= config.maxSpansPerFile) break;
+    if (spansToAdd.length >= config.maxSpansPerFile) {
+      // Deprioritized — exceeded cap
+      skippedFunctions.push({ name: fn.name, reason: "deprioritized" });
+      continue;
+    }
 
     // Check variable shadowing
     const shadowResult = checkVariableShadowing(fileContent, ["span", "tracer"], fn.name);
@@ -115,6 +128,49 @@ function camelToSnake(str: string): string {
     .replace(/([A-Z])/g, "_$1")
     .toLowerCase()
     .replace(/^_/, "");
+}
+
+// External call patterns for tier-1 classification
+const EXTERNAL_CALL_PATTERNS = [
+  /pool\.query/,
+  /\.query\s*\(/,
+  /fetch\s*\(/,
+  /axios\./,
+  /prisma\./,
+  /client\.send/,
+  /grpc\./,
+];
+
+// Complex branching patterns for tier-3 classification
+const COMPLEX_BRANCHING_PATTERNS = [
+  /if\s*\(.*\)\s*\{[\s\S]*else/,
+  /switch\s*\(/,
+  /try\s*\{[\s\S]*catch/,
+];
+
+export function classifyPriority(
+  _functionName: string,
+  functionBody: string,
+  isExportedAsync?: boolean,
+): number {
+  // Tier 1: External calls
+  if (EXTERNAL_CALL_PATTERNS.some((p) => p.test(functionBody))) {
+    return 1;
+  }
+
+  // Tier 2: Exported async functions (entry points)
+  // Check body for export async pattern if flag not provided
+  if (isExportedAsync ?? /export\s+async\s+function/.test(functionBody)) {
+    return 2;
+  }
+
+  // Tier 3: Complex branching
+  if (COMPLEX_BRANCHING_PATTERNS.some((p) => p.test(functionBody))) {
+    return 3;
+  }
+
+  // Tier 4: Everything else
+  return 4;
 }
 
 function deriveNamespace(filePath: string): string {

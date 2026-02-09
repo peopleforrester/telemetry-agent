@@ -1,8 +1,6 @@
-// ABOUTME: Result file module — Zod schemas for per-file agent results, file I/O, aggregation.
-// ABOUTME: Handles success/failure discriminated union, write/read/collect, and library dedup.
+// ABOUTME: Result module — Zod schemas for per-file agent results, aggregation.
+// ABOUTME: Handles success/failure discriminated union, library dedup, and summarization.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { z } from "zod";
 
 export const LibraryRequirementSchema = z.object({
@@ -28,6 +26,11 @@ export const FailureResultSchema = z.object({
   status: z.literal("failed"),
   reason: z.string(),
   last_error: z.string().optional(),
+  spans_added: z.number().int().min(0).default(0),
+  libraries_needed: z.array(LibraryRequirementSchema).default([]),
+  schema_extensions: z.array(z.string()).default([]),
+  attributes_created: z.number().int().min(0).default(0),
+  validation_retries: z.number().int().min(0).default(0),
 });
 
 export const FileResultSchema = z.discriminatedUnion("status", [
@@ -46,30 +49,6 @@ export interface ResultSummary {
   totalSpansAdded: number;
   totalAttributesCreated: number;
   librariesNeeded: string[];
-}
-
-function resultFilename(filePath: string): string {
-  return filePath.replace(/\//g, "__").replace(/\.ts$/, ".json");
-}
-
-export function writeResult(dir: string, result: FileResult): string {
-  fs.mkdirSync(dir, { recursive: true });
-  const filename = resultFilename(result.path);
-  const outPath = path.join(dir, filename);
-  fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf-8");
-  return outPath;
-}
-
-export function readResult(filePath: string): FileResult {
-  const raw = fs.readFileSync(filePath, "utf-8");
-  return FileResultSchema.parse(JSON.parse(raw));
-}
-
-export function collectResults(dir: string): FileResult[] {
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
-  const results = files.map((f) => readResult(path.join(dir, f)));
-  results.sort((a, b) => a.path.localeCompare(b.path));
-  return results;
 }
 
 export function aggregateLibraries(results: FileResult[]): LibraryRequirement[] {

@@ -21,6 +21,9 @@ const DEFAULT_CONFIG: Config = {
   maxFixAttempts: 3,
   maxTokensPerFile: 50000,
   maxSpansPerFile: 5,
+  maxFilesPerRun: 50,
+  maxSpansPerRun: 50,
+  schemaCheckpointInterval: 5,
   exclude: [],
 };
 
@@ -42,6 +45,20 @@ describe("buildSystemPrompt", () => {
   it("includes maxSpansPerFile constraint", () => {
     const prompt = buildSystemPrompt(SAMPLE_SCHEMA, DEFAULT_CONFIG);
     expect(prompt).toContain("5");
+  });
+
+  it("includes 4-tier span prioritization guidance", () => {
+    const prompt = buildSystemPrompt(SAMPLE_SCHEMA, DEFAULT_CONFIG);
+    expect(prompt).toContain("Tier 1");
+    expect(prompt).toContain("Tier 2");
+    expect(prompt).toContain("Tier 3");
+    expect(prompt).toContain("Tier 4");
+  });
+
+  it("includes maxSpansPerRun density guidance", () => {
+    const prompt = buildSystemPrompt(SAMPLE_SCHEMA, DEFAULT_CONFIG);
+    expect(prompt).toContain("50");
+    expect(prompt).toContain("project-wide");
   });
 });
 

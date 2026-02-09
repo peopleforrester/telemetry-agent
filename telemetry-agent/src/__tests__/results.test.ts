@@ -1,30 +1,16 @@
-// ABOUTME: Tests for the result file module — Zod schemas, file I/O, aggregation.
-// ABOUTME: Covers parsing, write/read roundtrips, collection, dedup, and summarization.
+// ABOUTME: Tests for the result module — Zod schemas, aggregation, summarization.
+// ABOUTME: Covers parsing, schema unification, dedup, and summarization.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
-import * as crypto from "node:crypto";
+import { describe, it, expect } from "vitest";
 
 import {
   SuccessResultSchema,
   FailureResultSchema,
   FileResultSchema,
-  writeResult,
-  readResult,
-  collectResults,
   aggregateLibraries,
   summarizeResults,
   type FileResult,
-  type LibraryRequirement,
 } from "../results.js";
-
-function makeTempDir(): string {
-  const dir = path.join(os.tmpdir(), `results-test-${crypto.randomUUID()}`);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 describe("Result Schemas", () => {
   it("SuccessResult validates correctly", () => {
@@ -69,94 +55,37 @@ describe("Result Schemas", () => {
 
     expect(() => FileResultSchema.parse(input)).toThrow();
   });
-});
 
-describe("writeResult / readResult", () => {
-  let tempDir: string;
+  it("FailureResult includes all fields with defaults", () => {
+    const input = {
+      path: "src/services/broken.ts",
+      status: "failed",
+      reason: "Syntax error",
+    };
 
-  beforeEach(() => {
-    tempDir = makeTempDir();
+    const result = FailureResultSchema.parse(input);
+    expect(result.spans_added).toBe(0);
+    expect(result.libraries_needed).toEqual([]);
+    expect(result.schema_extensions).toEqual([]);
+    expect(result.attributes_created).toBe(0);
+    expect(result.validation_retries).toBe(0);
   });
 
-  afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("writeResult creates file with correct name", () => {
-    const result: FileResult = {
-      path: "src/services/user.ts",
-      status: "success",
-      spans_added: 1,
+  it("FailureResult accepts explicit zeros for unified fields", () => {
+    const input = {
+      path: "src/services/broken.ts",
+      status: "failed",
+      reason: "Syntax error",
+      spans_added: 0,
       libraries_needed: [],
       schema_extensions: [],
       attributes_created: 0,
       validation_retries: 0,
     };
 
-    const written = writeResult(tempDir, result);
-    expect(fs.existsSync(written)).toBe(true);
-    // src/services/user.ts -> src__services__user.json
-    expect(path.basename(written)).toBe("src__services__user.json");
-  });
-
-  it("readResult reads back what writeResult wrote", () => {
-    const result: FileResult = {
-      path: "src/services/order.ts",
-      status: "success",
-      spans_added: 3,
-      libraries_needed: [
-        { package: "@opentelemetry/instrumentation-pg", import: "PgInstrumentation", config: {} },
-      ],
-      schema_extensions: ["myapp.order.create"],
-      attributes_created: 2,
-      validation_retries: 1,
-    };
-
-    const written = writeResult(tempDir, result);
-    const loaded = readResult(written);
-
-    expect(loaded).toEqual(result);
-  });
-});
-
-describe("collectResults", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-  });
-
-  afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("finds all JSON files in directory", () => {
-    const results: FileResult[] = [
-      {
-        path: "src/a.ts",
-        status: "success",
-        spans_added: 1,
-        libraries_needed: [],
-        schema_extensions: [],
-        attributes_created: 0,
-        validation_retries: 0,
-      },
-      {
-        path: "src/b.ts",
-        status: "failed",
-        reason: "syntax error",
-      },
-    ];
-
-    for (const r of results) {
-      writeResult(tempDir, r);
-    }
-
-    const collected = collectResults(tempDir);
-    expect(collected).toHaveLength(2);
-    // Should be sorted by path
-    expect(collected[0].path).toBe("src/a.ts");
-    expect(collected[1].path).toBe("src/b.ts");
+    const result = FailureResultSchema.parse(input);
+    expect(result.spans_added).toBe(0);
+    expect(result.libraries_needed).toEqual([]);
   });
 });
 

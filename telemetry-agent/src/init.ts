@@ -112,6 +112,9 @@ export async function runInit(
     maxFixAttempts: 3,
     maxTokensPerFile: 50000,
     maxSpansPerFile: 5,
+    maxFilesPerRun: 50,
+    maxSpansPerRun: 50,
+    schemaCheckpointInterval: 5,
     exclude: ["**/*.test.ts", "**/*.spec.ts", "**/*.d.ts", "node_modules/**"],
   });
 

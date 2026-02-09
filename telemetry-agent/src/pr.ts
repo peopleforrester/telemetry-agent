@@ -5,6 +5,23 @@ import { execSync } from "node:child_process";
 import type { FileResult } from "./results.js";
 import type { EndOfRunResult } from "./coordinator.js";
 
+export interface TokenUsageSummary {
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCost: number;
+}
+
+export interface SpanDensityInfo {
+  spanDensityWarning: boolean;
+  totalSpans: number;
+  maxSpansPerRun: number;
+}
+
+export interface PrDescriptionOptions {
+  tokenUsage?: TokenUsageSummary;
+  spanDensity?: SpanDensityInfo;
+}
+
 export function buildResultManifest(
   results: FileResult[],
   endOfRun: EndOfRunResult | null
@@ -14,7 +31,8 @@ export function buildResultManifest(
 
 export function buildPrDescription(
   results: FileResult[],
-  endOfRun: EndOfRunResult | null
+  endOfRun: EndOfRunResult | null,
+  options?: PrDescriptionOptions,
 ): string {
   const succeeded = results.filter((r) => r.status === "success");
   const failed = results.filter((r) => r.status === "failed");
@@ -54,6 +72,24 @@ export function buildPrDescription(
     } else if (endOfRun.testsRan) {
       lines.push(`Tests ${endOfRun.testsPassed ? "passed" : "failed"}`);
     }
+    lines.push("");
+  }
+
+  // Token usage summary
+  if (options?.tokenUsage) {
+    const { inputTokens, outputTokens, estimatedCost } = options.tokenUsage;
+    lines.push("## Token Usage");
+    lines.push("");
+    lines.push(`- Input tokens: ${inputTokens}`);
+    lines.push(`- Output tokens: ${outputTokens}`);
+    lines.push(`- Estimated cost: $${estimatedCost.toFixed(2)}`);
+    lines.push("");
+  }
+
+  // Span density warning
+  if (options?.spanDensity?.spanDensityWarning) {
+    const { totalSpans, maxSpansPerRun } = options.spanDensity;
+    lines.push(`> **Span Density Warning:** Total spans (${totalSpans}) exceeds maxSpansPerRun (${maxSpansPerRun}). Review span additions for potential over-instrumentation.`);
     lines.push("");
   }
 
